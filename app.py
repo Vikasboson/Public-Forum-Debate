@@ -124,9 +124,11 @@ def reset_session(setup_done: bool):
     ss.setup_done, ss.page_round = setup_done, 1
 
 
-def run_engine(fn, *args):
+def run_engine(fn, *args, step: int | None = None):
     """Call an engine function, capturing what it prints. Returns (result,
-    error). Bedrock failures arrive as SystemExit (see the adapters)."""
+    error). Bedrock failures arrive as SystemExit (see the adapters). `step` is
+    the DEBATE_ORDER step the call belongs to: its notices are shown under that
+    step's speech rather than at the bottom of the page."""
     buf = io.StringIO()
     result, err = None, None
     try:
@@ -137,7 +139,7 @@ def run_engine(fn, *args):
     except Exception as e:
         err = f"{type(e).__name__}: {e}"
     out = buf.getvalue()
-    ss.flash += [ln.strip() for ln in out.splitlines()
+    ss.flash += [(step, ln.strip()) for ln in out.splitlines()
                  if any(p in ln for p in NOTICE_PATTERNS)]
     return result, err
 
@@ -525,11 +527,16 @@ def render_transcript(page: int):
             render_constructive(side)
         else:
             render_speech(side, stage)
+        # Notices about this step (e.g. a trimmed tool speech) go right under it.
+        for note in [t for k, t in ss.flash if k == n]:
+            st.warning(note)
+        ss.flash = [(k, t) for k, t in ss.flash if k != n]
 
 
 def submit(value: str, spinner: str = "Saving..."):
     with st.spinner(spinner):
-        _, err = run_engine(rnd.debate_submit, corpus, cfg, value, client, mock)
+        _, err = run_engine(rnd.debate_submit, corpus, cfg, value, client, mock,
+                            step=action["n"])
     if err:
         ss.halted = err
     st.rerun()
@@ -642,7 +649,7 @@ def render_tool_action():
             st.rerun()
         return
     with st.spinner(f"{a['what']}..."):
-        _, err = run_engine(rnd.debate_tool_turn, corpus, cfg, client, mock)
+        _, err = run_engine(rnd.debate_tool_turn, corpus, cfg, client, mock, step=a["n"])
     if err:
         ss.halted = err
     st.rerun()
@@ -688,7 +695,7 @@ if page > TOTAL_ROUNDS:
     st.stop()
 
 render_transcript(page)
-for note in ss.flash:
+for _, note in ss.flash:
     st.warning(note)
 ss.flash = []
 
