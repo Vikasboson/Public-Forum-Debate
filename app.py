@@ -20,6 +20,8 @@ import io
 import json
 import os
 import re
+import shutil
+import uuid
 from pathlib import Path
 
 import streamlit as st
@@ -266,6 +268,32 @@ if not config_path.exists():
     st.error(f"No resolution config at {config_path}.")
     st.stop()
 cfg = json.loads(config_path.read_text(encoding="utf-8"))
+
+
+# --- per-session debate workspace -----------------------------------------------------
+# debate_state.json lives in the corpus directory, so sharing one corpus would show
+# every login the previous person's half-finished debate. Each browser session gets
+# its own workspace, corpus/sessions/<sid>/, holding that session's state, archives
+# and gaps log. The read-only KB is symlinked in; the tool's prebuilt cases are
+# copied (a debate may rewrite them). The sid is kept in the URL (?sid=...), so a
+# refresh resumes the same debate while a fresh visit starts clean.
+def session_workspace(base: Path) -> Path:
+    sid = st.query_params.get("sid", "")
+    if not re.fullmatch(r"[0-9a-f]{12}", sid):
+        sid = uuid.uuid4().hex[:12]
+        st.query_params["sid"] = sid
+    work = base / "sessions" / sid
+    work.mkdir(parents=True, exist_ok=True)
+    kb_link = work / "kb.sqlite"
+    if not kb_link.exists():
+        kb_link.symlink_to((base / "kb.sqlite").resolve())
+    for f in base.glob("case_*.json"):
+        if not (work / f.name).exists():
+            shutil.copyfile(f, work / f.name)
+    return work
+
+
+corpus = session_workspace(corpus)
 
 # Display label only: resolution.json's text (fed to the model prompts) keeps
 # its "Resolved:" wording.

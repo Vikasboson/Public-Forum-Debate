@@ -17,3 +17,6 @@ corpus/rounds/
 corpus/debate_state.json
 corpus/debates/
 corpus/gaps.jsonl
+
+# per-session debate workspaces created by app.py
+corpus/sessions/
