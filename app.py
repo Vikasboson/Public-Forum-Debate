@@ -217,6 +217,36 @@ def round_steps() -> dict:
     return steps
 
 
+def go_to_step(n: int):
+    """Sidebar link target: the main page shows one round at a time, so a
+    plain `#step-n` link only works inside the round already on screen."""
+    ss.page_round = round_no(n)
+    ss.scroll_step = n
+
+
+def step_link(n: int, text: str, key: str, bold: bool = False):
+    """A link to step `n`: an in-page anchor when that step is on the page
+    now, otherwise a button that switches to its round first."""
+    if round_no(n) == ss.page_round:
+        st.markdown(f"**[{text}](#step-{n})**" if bold else f"[{text}](#step-{n})")
+    else:
+        st.button(text, key=key, type="tertiary", on_click=go_to_step, args=(n,))
+
+
+def scroll_to_step():
+    """After switching rounds from the sidebar, jump to the clicked step."""
+    n = ss.pop("scroll_step", None)
+    if n is None:
+        return
+    # A fixed script of ours, never user or model text.
+    st.iframe(f"""<script>
+      const d = window.parent.document;
+      const go = () => {{ const el = d.getElementById("step-{n}");
+        if (el) el.scrollIntoView(); }};
+      setTimeout(go, 150);
+    </script>""", height=1)
+
+
 def render_rounds_bar(current: int | None):
     """`current` is the step in progress, 0 before the debate starts, None once
     it's finished."""
@@ -242,13 +272,11 @@ def render_rounds_bar(current: int | None):
                 with st.container(border=True):
                     # Links stay outside the colour markup, which doesn't nest
                     # them reliably; the highlight goes on a tag beside it.
-                    link = f"[{title}](#step-{steps[0]})"
                     if states[0] == "upcoming":
                         st.markdown(label)
-                    elif states[0] == "current":
-                        st.markdown(f"▶ **{link}** :blue-background[in progress]")
                     else:
-                        st.markdown(f"✓ {link}")
+                        mark = "▶" if states[0] == "current" else "✓"
+                        step_link(steps[0], f"{mark} {title}", f"nav_{steps[0]}")
                 continue
 
             with st.expander(label, expanded="current" in states):
@@ -257,10 +285,9 @@ def render_rounds_bar(current: int | None):
                     if state == "upcoming":
                         st.markdown(f":gray[{side.upper()} · not yet]")
                     elif state == "current":
-                        st.markdown(f"▶ **[{side.upper()}](#step-{n})** "
-                                    f":blue-background[in progress]")
+                        step_link(n, f"▶ {side.upper()} (in progress)", f"nav_{n}")
                     else:
-                        st.markdown(f"✓ [{side.upper()}](#step-{n})")
+                        step_link(n, f"✓ {side.upper()}", f"nav_{n}")
 
 
 if not (corpus / "kb.sqlite").exists():
@@ -695,6 +722,7 @@ if page > TOTAL_ROUNDS:
     st.stop()
 
 render_transcript(page)
+scroll_to_step()
 for _, note in ss.flash:
     st.warning(note)
 ss.flash = []
